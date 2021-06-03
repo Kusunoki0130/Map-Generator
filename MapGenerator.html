@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<head>
+    <title>Map Generator</title>
+</head>
+
+<body>
+    <canvas id="cv" width="1200px" height="900px"> </canvas>
+    <canvas id="cv2" width="1200px" height="900px"> </canvas>
+</body>
+
+<script>
+var grad;
+var mp;
+var dx;
+var dy;
+var gradhash;
+function _randomGrad(sizex, sizey, gradnum) {
+    grad = new Array();
+    for (var i = 0; i < gradnum; ++i) {
+        theta = (i / gradnum) * 2 * Math.PI;
+        grad.push([Math.cos(theta), Math.sin(theta)]);
+    }
+    gradhash = new Array();
+    for (var i = 0; i <= sizex; ++i) {
+        gradhash[i] = new Array();
+        for (var j = 0; j <= sizey; ++j) {
+            gradhash[i][j] = parseInt(Math.random() * gradnum);
+        }
+    }
+}
+function _fade(val) {
+    //return val * val * val * (6 * val * val - 15 * val + 10);
+    return 3 * val * val - 2 * val * val * val;
+}
+function _matDot(vx, vy, ux, uy) {
+    var gx = grad[gradhash[vx][vy]][0];
+    var gy = grad[gradhash[vx][vy]][1];
+    return gx * ux + gy * uy;
+}
+function _calVal(x, y) {
+    var vx = parseInt(x);
+    var vy = parseInt(y);
+    var ux = x - vx;
+    var uy = y - vy;
+    var n00 = _matDot(vx, vy, ux, uy);
+    var n10 = _matDot(vx + 1, vy, ux - 1, uy);
+    var n01 = _matDot(vx, vy + 1, ux, uy - 1);
+    var n11 = _matDot(vx + 1, vy + 1, ux - 1, uy - 1);
+    return (
+        (n00 * (1 - _fade(ux)) + n10 * _fade(ux)) * (1 - _fade(uy)) +
+        (n01 * (1 - _fade(ux)) + n11 * _fade(ux)) * _fade(uy)
+    );
+}
+function _mapping(mp, height, width) {
+    var maxval = -0x7fffffff;
+    var minval = 0x7fffffff;
+    for (var i = 0; i < height; ++i) {
+        for (var j = 0; j < width; ++j) {
+            maxval = Math.max(maxval, mp[i][j]);
+            minval = Math.min(minval, mp[i][j]);
+        }
+    }
+    for (var i = 0; i < height; ++i) {
+        for (var j = 0; j < width; ++j) {
+            mp[i][j] = parseInt(
+                (255 * (mp[i][j] - minval)) / (maxval - minval)
+            );
+        }
+    }
+    return mp;
+}
+function _printMp(mp, Id, height, width, color) {
+    var cv = document.getElementById(Id);
+    var pannel = cv.getContext("2d");
+    for (var i = 0; i < height; ++i) {
+        for (var j = 0; j < width; ++j) {
+            var temppos = -1;
+            var lastalpha = 0;
+            for (var k = 0; k < color.length; ++k) {
+                if (mp[i][j] <= color[k].alpha) {
+                    temppos = k;
+                    lastalpha = k == 0 ? 0 : color[k - 1].alpha;
+                    break;
+                }
+            }
+            var ratio = parseInt(
+                (mp[i][j] - lastalpha) /
+                    (color[temppos].alpha - lastalpha) /
+                    (1 / color[temppos].layers)
+            );
+            var r = parseInt(
+                color[temppos].stcolor[0] +
+                    (ratio *
+                        (color[temppos].edcolor[0] -
+                            color[temppos].stcolor[0])) /
+                        color[temppos].layers
+            );
+            var g = parseInt(
+                color[temppos].stcolor[1] +
+                    (ratio *
+                        (color[temppos].edcolor[1] -
+                            color[temppos].stcolor[1])) /
+                        color[temppos].layers
+            );
+            var b = parseInt(
+                color[temppos].stcolor[2] +
+                    (ratio *
+                        (color[temppos].edcolor[2] -
+                            color[temppos].stcolor[2])) /
+                        color[temppos].layers
+            );
+            pannel.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            pannel.fillRect(i * 1, j * 1, 1, 1);
+        }
+    }
+}
+function _river(mp, height, width, color) {
+    var nodes = new Array();
+    for (var k = 0; k < 10; ++k) {
+        var mi = parseInt(Math.random() * height);
+        var mj = parseInt(Math.random() * width);
+        while (mp[mi][mj] >= color[1].alpha || mp[mi][mj] <= color[0].alpha) {
+            mi = parseInt(Math.random() * height);
+            mj = parseInt(Math.random() * width);
+        }
+        var sti = -1;
+        var stj = -1;
+        for (var depth = 1; true; ++depth) {
+            var basetheta = Math.random() * 2 * Math.PI;
+            for (i = 0; i < 2 * Math.PI; i += Math.PI / 360) {
+                var chi = parseInt(Math.cos(basetheta + i) * depth + mi);
+                var chj = parseInt(Math.sin(basetheta + i) * depth + mj);
+                if (chi < 0 || chi >= height || chj < 0 || chj >= width) {
+                    continue;
+                }
+                if (mp[chi][chj] > color[1].alpha) {
+                    sti = chi;
+                    stj = chj;
+                    break;
+                }
+            }
+            if (sti != -1) {
+                break;
+            }
+        }
+        var edi = -1;
+        var edj = -1;
+        for (var depth = 1; true; ++depth) {
+            var basetheta = Math.random() * 2 * Math.PI;
+            for (i = 0; i < 2 * Math.PI; i += Math.PI / 360) {
+                var chi = parseInt(Math.cos(basetheta + i) * depth + mi);
+                var chj = parseInt(Math.sin(basetheta + i) * depth + mj);
+                if (chi < 0 || chi >= height || chj < 0 || chj >= width) {
+                    continue;
+                }
+                if (mp[chi][chj] < color[0].alpha / 2) {
+                    edi = chi;
+                    edj = chj;
+                    break;
+                }
+            }
+            if (edi != -1) {
+                break;
+            }
+        }
+        nodes.push([sti, stj, edi, edj]);
+    }
+    for (var k = 0; k < nodes.length; ++k) {
+        var sti = nodes[k][0];
+        var stj = nodes[k][1];
+        var edi = nodes[k][2];
+        var edj = nodes[k][3];
+        var length = Math.sqrt(
+            (sti - edi) * (sti - edi) + (stj - edj) * (stj - edj)
+        );
+        var mnode = new Array();
+        mnode.push([sti, stj]);
+        var nnum = 20;
+        for (var p = 0; p < nnum; ++p) {
+            var theta = Math.random() * 2 * Math.PI;
+            var basei = ((p + 1) * (edi - sti)) / (nnum + 1) + sti;
+            var basej = ((p + 1) * (edj - stj)) / (nnum + 1) + stj;
+            mnode.push([
+                parseInt(basei + (Math.cos(theta) * length) / (2 * nnum + 2)),
+                parseInt(basej + (Math.sin(theta) * length) / (2 * nnum + 2)),
+            ]);
+        }
+        mnode.push([edi, edj]);
+        for (var i = 0; i < mnode.length - 1; ++i) {
+            var x1 = mnode[i][0];
+            var y1 = mnode[i][1];
+            var x2 = mnode[i + 1][0];
+            var y2 = mnode[i + 1][1];
+            for (j = 0; j < 100; ++j) {
+                var mi = parseInt(x1 + (j * (x2 - x1)) / 100);
+                var mj = parseInt(y1 + (j * (y2 - y1)) / 100);
+                if (mp[mi][mj] >= color[0].alpha) {
+                    mp[mi][mj] = mp[mi][mj] - 60;
+                    mp[mi + 1][mj] = mp[mi + 1][mj] - 60;
+                    mp[mi][mj + 1] = mp[mi][mj + 1] - 60;
+                    mp[mi + 1][mj + 1] = mp[mi + 1][mj + 1] - 60;
+                }
+            }
+        }
+    }
+    return mp;
+}
+function perlin_noise(base, Id, height, width, size, gradnum, ratio, color) {
+    var layer = size.length;
+    mp = new Array();
+    for (var i = 0; i < height; ++i) {
+        mp[i] = new Array();
+        for (var j = 0; j < width; ++j) {
+            mp[i][j] = ratio[ratio.length - 1] * base[i][j];
+        }
+    }
+    for (var k = 0; k < layer; ++k) {
+        var sizex = height / size[k];
+        var sizey = width / size[k];
+        dx = sizex / height;
+        dy = sizey / width;
+        _randomGrad(sizex, sizey, gradnum[k]);
+        for (var i = 0; i < height; ++i) {
+            for (var j = 0; j < width; ++j) {
+                mp[i][j] += ratio[k] * _calVal(i * dx, j * dy);
+            }
+        }
+    }
+    mp = _mapping(mp, height, width);
+    // mp = _river(mp, height, width, color);
+    _printMp(mp, Id, height, width, color);
+    return mp;
+}
+function _mode(val, mode) {
+    if (mode == "sqrt") {
+        return Math.sqrt(val);
+    } else if (mode == "linear") {
+        return val;
+    } else if (mode == "ln") {
+        return Math.log(val + 1);
+    } else if (mode == "x^2") {
+        return val ^ 2;
+    }
+}
+function getBase(height, width, lines, fm, mode) {
+    var base = new Array();
+    var axis = new Array();
+    var maxval = -1;
+    var minval = 0x7fffffff;
+    for (var i = 0; i < lines.length; ++i) {
+        if (lines[i][0][0] > lines[i][1][0]) {
+            var temp = lines[i][0][0];
+            lines[i][0][0] = lines[i][1][0];
+            lines[i][1][0] = temp;
+            temp = lines[i][0][1];
+            lines[i][0][1] = lines[i][1][1];
+            lines[i][1][1] = temp;
+        }
+        var dy = (lines[i][1][1] - lines[i][0][1]) / fm[i];
+        var dx = (lines[i][1][0] - lines[i][0][0]) / fm[i];
+        for (j = 0; j * dx < lines[i][1][0] - lines[i][0][0]; ++j) {
+            axis.push([
+                parseInt(j * dx + lines[i][0][0]),
+                parseInt(j * dy + lines[i][0][1]),
+            ]);
+        }
+    }
+    for (var i = 0; i < height; ++i) {
+        base[i] = new Array();
+        for (var j = 0; j < width; ++j) {
+            var temp = 0x7fffffff;
+            for (var k = 0; k < axis.length; ++k) {
+                temp = Math.min(
+                    temp,
+                    Math.sqrt(
+                        (i - axis[k][0]) * (i - axis[k][0]) +
+                            (j - axis[k][1]) * (j - axis[k][1])
+                    )
+                );
+            }
+            base[i][j] = _mode(temp, mode);
+            maxval = Math.max(maxval, base[i][j]);
+            minval = Math.min(minval, base[i][j]);
+        }
+    }
+    for (var i = 0; i < height; ++i) {
+        for (var j = 0; j < width; ++j) {
+            base[i][j] = (maxval - base[i][j]) / (maxval - minval);
+        }
+    }
+    return base;
+}
+
+function windAndRain(Id, mp, height, width, color, spawn, dir, pow) {
+    var q = new Array();
+    var rainmp = new Array();
+    for (var i = 0; i < height; ++i) {
+        rainmp[i] = new Array();
+        for (var j = 0; j < width; ++j) {
+            rainmp[i][j] = 0;
+        }
+    }
+    for (var k = 0; k < spawn.length; ++k) {
+        if (spawn[k]=="south") {
+            for (var i = 0; i < height; ++i) {
+                q.push([i, width - 1, pow[k]]);
+            }
+        }
+        else if (spawn[k]=="west") {
+            for (var j = 0; j < width; ++j) {
+                q.push([0, j, pow[k]]);
+            }
+        }
+        else if (spawn[k]=="east") {
+            for (var j = 0; j < width; ++j) {
+                q.push([height-1, j, pow[k]]);
+            }
+        }
+        else if (spawn[k]=="north") {
+            for (var i = 0; i < height; ++i) {
+                q.push([i, 0, pow[k]]);
+            }
+        }
+    }
+    var maxrain = -1;
+    while (q.length) {
+        var ux = q[0][0];
+        var uy = q[0][1];
+        var up = q[0][2];
+        q.shift();
+        var vx = parseInt(ux) + dir[0];
+        var vy = parseInt(uy) + dir[1];
+        if (vx < 0 || vx >= height || vy < 0 || vy >= width) {
+            continue;
+        }
+        if (mp[vx][vy] <= color[0].alpha) {
+            q.push([vx, vy, up + 0.5]);
+            continue;
+        }
+        if (mp[vx][vy] <= mp[parseInt(ux)][parseInt(uy)]) {
+            ux = vx;
+            uy = vy;
+            rainmp[vx][vy] += 2;
+            maxrain = Math.max(maxrain, rainmp[vx][vy]);
+            if (up - 2 > 0) {
+                q.push([ux, uy, up - 2]);
+            }
+        } else {
+            var uux = ux + dir[0] / (mp[vx][vy] - mp[parseInt(ux)][parseInt(uy)]);
+            var uuy = uy + dir[1] / (mp[vx][vy] - mp[parseInt(ux)][parseInt(uy)]);
+            ++rainmp[parseInt(uux)][parseInt(uuy)];
+            maxrain = Math.max(maxrain, rainmp[parseInt(uux)][parseInt(uuy)]);
+            if (up - 0.5 > 0) {
+                q.push([uux, uuy, up - 0.5]);
+                // if (Math.random() > 0.99) {
+                //     q.push([uux + 1, uuy, up / 2]);
+                //     q.push([uux, uuy - 1, up / 2]);
+                // }
+            }
+        }
+    }
+    var cv = document.getElementById(Id);
+    var pannel = cv.getContext("2d");
+    for (i = 0; i < height; ++i) {
+        for (j = 0; j < width; ++j) {
+            var r, g, b;
+            var k;
+            if (mp[i][j] < color[0].alpha) {
+                var ratio = parseInt(
+                    (mp[i][j] - 0) /
+                        (color[0].alpha - 0) /
+                        (1 / color[0].layers)
+                );
+                k = 0;
+                r = parseInt(
+                    color[k].stcolor[0] +
+                        (ratio * (color[k].edcolor[0] - color[k].stcolor[0])) /
+                            color[k].layers
+                );
+                g = parseInt(
+                    color[k].stcolor[1] +
+                        (ratio * (color[k].edcolor[1] - color[k].stcolor[1])) /
+                            color[k].layers
+                );
+                b = parseInt(
+                    color[k].stcolor[2] +
+                        (ratio * (color[k].edcolor[2] - color[k].stcolor[2])) /
+                            color[k].layers
+                );
+            } else {
+                if (rainmp[i][j] != 0) {
+                    r = g = b = 128;
+                } else {
+                    r = g = b = 255;
+                }
+            }
+
+            pannel.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            pannel.fillRect(i * 1, j * 1, 1, 1);
+        }
+    }
+}
+</script>
+
+<script>
+    c1 = {
+        alpha: 110,
+        layers: 4,
+        stcolor: [8, 8, 241],
+        edcolor: [124, 255, 251],
+    };
+    c2 = {
+        alpha: 190,
+        layers: 5,
+        stcolor: [201, 255, 119],
+        edcolor: [71, 119, 0],
+    };
+    c3 = {
+        alpha: 255,
+        layers: 7,
+        stcolor: [34, 34, 34],
+        edcolor: [255, 255, 255],
+    };
+    line1 = [
+        [250, 0],
+        [280, 101],
+    ];
+    line2 = [
+        [300, 500],
+        [1200, 0],
+    ];
+    line3 = [
+        [1100, 400],
+        [1200, 800],
+    ];
+    line5 = [
+        [1200, 450],
+        [300, 450],
+    ];
+    var mp = perlin_noise(
+        getBase(1200, 900, [line1, line2, line3, line5], [3, 5, 4, 5], "sqrt"),
+        "cv",
+        1200,
+        900,
+        [300, 150, 100, 50, 25, 20, 10],
+        [10, 10, 10, 10, 10, 10, 10, 10],
+        [300, 150, 100, 50, 25, 20, 10, 200],
+        [c1, c2, c3]
+    );
+    windAndRain("cv2", mp, 1200, 900, [c1,c2,c3], ["west", "south"], [1,-1], [150, 150]);
+</script>
