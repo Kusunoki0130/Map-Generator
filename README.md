@@ -1,7 +1,7 @@
 # Map-Generator
-A random generator of maps. It works on HTML ans JS.
+A random generator of maps. It works on HTML and JS.
 
-Just double cilick on the html file, and it will generator automatically.
+Just double click on the html file, and it will generate automatically.
 
 Press F5, then a new map will be generated.
 
